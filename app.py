@@ -44,7 +44,7 @@ MODEL_LIST = [
     "自定义模型"
 ]
 
-# ===================== 核心优先级逻辑 =====================
+# ===================== 优先级逻辑 =====================
 def get_final_credits():
     var_id = st.secrets.get("CF_ACCOUNT_ID", "")
     var_token = st.secrets.get("CF_API_TOKEN", "")
@@ -54,7 +54,7 @@ def get_final_credits():
 
     final_id = user_id.strip() if user_id.strip() else var_id.strip()
     final_token = user_token.strip() if user_token.strip() else var_token.strip()
-    
+
     return final_id, final_token
 
 # ===================== 状态初始化 =====================
@@ -92,7 +92,33 @@ def load_kb(url1, url2):
 def search(query):
     return fetch(f"https://www.bing.com/search?q={urllib.parse.quote(query)}")
 
-# ===================== AI 调用（保留完整JSON） =====================
+# ===================== 【终极修复】回答提取逻辑 =====================
+def extract_answer(res):
+    # 兼容所有 CF 模型：kimi / glm / llama / gemma
+    try:
+        result = res.get("result", res)
+
+        # 情况1: kimi 格式 → choices[0].text
+        if isinstance(result, dict) and "choices" in result:
+            choices = result["choices"]
+            if isinstance(choices, list) and len(choices) > 0:
+                text = choices[0].get("text", "")
+                if text:
+                    return text.strip()
+
+        # 情况2: 标准格式 → response
+        if "response" in result:
+            return str(result["response"]).strip()
+
+        # 情况3: text 直接在 result
+        if "text" in result:
+            return str(result["text"]).strip()
+
+        # 兜底
+        return str(result)[:2000].strip()
+    except:
+        return str(res)[:2000].strip()
+
 def cf_ai(prompt, account_id, api_token, model):
     if not account_id or not api_token:
         return "🔒 请填写 CF Account ID 和 API Token", {}
@@ -109,24 +135,12 @@ def cf_ai(prompt, account_id, api_token, model):
         }
         data = json.dumps({"prompt": prompt}).encode()
         req = urllib.request.Request(url, headers=headers, data=data, method="POST")
-        
+
         with urllib.request.urlopen(req, timeout=30) as f:
             res = json.load(f)
-            
-            answer = ""
-            if "result" in res:
-                r = res["result"]
-                if isinstance(r, dict):
-                    if "response" in r:
-                        answer = r["response"]
-                    elif "text" in r:
-                        answer = r["text"]
-                    else:
-                        answer = str(r)
-            if not answer:
-                answer = str(res)
-                
-        return answer.strip(), res
+
+        answer = extract_answer(res)
+        return answer, res
 
     except Exception as e:
         return f"❌ 调用失败：{str(e)}", {}
@@ -157,11 +171,6 @@ st.markdown("""
     background: #f1f3f4; 
     padding: 12px 16px; border-radius: 16px 16px 16px 4px; 
     margin: 8px 0; max-width: 75%; white-space: pre-wrap; 
-}
-.json-box {
-    font-size: 12px; color: #666; background: #f8f9fa;
-    padding: 8px; border-radius: 6px; margin-top: 6px;
-    max-height: 200px; overflow-y: auto;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -239,7 +248,7 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
         context = f"【知识库】\n{kb_content}\n\n【上传文件】\n{file_content}"
 
         check_ans, _ = cf_ai(f"只用中文。能回答输出有答案，否则无答案。\n{context}\n问题：{prompt}", account, token, used_model)
-        
+
         if "无答案" in check_ans:
             web = search(prompt)
             final_prompt = f"只用中文如实回答。\n{context}\n搜索：{web}\n问题：{prompt}"
