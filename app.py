@@ -214,7 +214,7 @@ with st.sidebar:
     st.text_input("API Token", key="input_token", type="password")
     st.divider()
     st.title("📚 知识库")
-    kb1 = st.text_input("链接 1", value="https://jxsy.bearblog.dev/")
+    kb1 = st.text_input("链接 1", value="")
     kb2 = st.text_input("链接 2", value="")
     st.divider()
     st.title("📎 上传文件")
