@@ -62,6 +62,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "file_content" not in st.session_state:
     st.session_state.file_content = ""
+if "json_logs" not in st.session_state:
+    st.session_state.json_logs = {}
 
 # ===================== 工具函数 =====================
 def clean_html(html):
@@ -90,14 +92,14 @@ def load_kb(url1, url2):
 def search(query):
     return fetch(f"https://www.bing.com/search?q={urllib.parse.quote(query)}")
 
-# ===================== 【修复】AI 调用 =====================
+# ===================== AI 调用（保留完整JSON） =====================
 def cf_ai(prompt, account_id, api_token, model):
     if not account_id or not api_token:
-        return "请填写 CF Account ID 和 API Token"
+        return "🔒 请填写 CF Account ID 和 API Token", {}
 
     model = model.strip()
     if not model.startswith(("@cf/", "@hf/")):
-        model = "@cf/" + model
+        model = f"@cf/{model}"
 
     try:
         url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
@@ -111,17 +113,25 @@ def cf_ai(prompt, account_id, api_token, model):
         with urllib.request.urlopen(req, timeout=30) as f:
             res = json.load(f)
             
-            if "result" in res and "response" in res["result"]:
-                return res["result"]["response"]
-            elif "result" in res:
-                return str(res["result"])
-            else:
-                return str(res)
+            answer = ""
+            if "result" in res:
+                r = res["result"]
+                if isinstance(r, dict):
+                    if "response" in r:
+                        answer = r["response"]
+                    elif "text" in r:
+                        answer = r["text"]
+                    else:
+                        answer = str(r)
+            if not answer:
+                answer = str(res)
+                
+        return answer.strip(), res
 
     except Exception as e:
-        return f"调用失败：{str(e)}"
+        return f"❌ 调用失败：{str(e)}", {}
 
-# ===================== 【真正 MDUI】 =====================
+# ===================== MDUI 界面 =====================
 st.markdown("""
 <link rel="stylesheet" href="https://cdn.mdui.org/css/mdui.min.css">
 <script src="https://cdn.mdui.org/js/mdui.min.js"></script>
@@ -132,37 +142,26 @@ st.markdown("""
   </div>
 </div>
 
-<br><br>
+<br>
 
 <style>
-.main {
-    max-width: 800px;
-    margin: 0 auto;
+.main { max-width: 820px; margin: 0 auto; padding: 20px; }
+.mdui-card { padding: 24px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: #fff; }
+#chat-box { height: 550px; overflow-y: auto; }
+.user-msg { 
+    background: #2196F3; color: white; 
+    padding: 12px 16px; border-radius: 16px 16px 4px 16px; 
+    margin: 8px 0; margin-left: auto; max-width: 75%; 
 }
-.mdui-card {
-    padding: 20px;
-    margin-bottom: 16px;
+.bot-msg { 
+    background: #f1f3f4; 
+    padding: 12px 16px; border-radius: 16px 16px 16px 4px; 
+    margin: 8px 0; max-width: 75%; white-space: pre-wrap; 
 }
-#chat-box {
-    height: 550px;
-    overflow-y: auto;
-}
-.user-msg {
-    background: #2196F3;
-    color: white;
-    padding: 12px 16px;
-    border-radius: 16px 16px 4px 16px;
-    margin: 8px 0;
-    margin-left: auto;
-    max-width: 75%;
-}
-.bot-msg {
-    background: #f1f3f4;
-    padding: 12px 16px;
-    border-radius: 16px 16px 16px 4px;
-    margin: 8px 0;
-    max-width: 75%;
-    white-space: pre-wrap;
+.json-box {
+    font-size: 12px; color: #666; background: #f8f9fa;
+    padding: 8px; border-radius: 6px; margin-top: 6px;
+    max-height: 200px; overflow-y: auto;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -175,14 +174,14 @@ with st.sidebar:
     st.text_input("API Token", key="input_token", type="password")
     st.divider()
     st.title("📚 知识库")
-    kb1 = st.text_input("链接1", value="https://jxsy.bearblog.dev/")
-    kb2 = st.text_input("链接2", value="")
+    kb1 = st.text_input("链接 1", value="https://jxsy.bearblog.dev/")
+    kb2 = st.text_input("链接 2", value="")
     st.divider()
     st.title("📎 上传文件")
     uploaded = st.file_uploader("TXT/MD", type=["txt", "md"])
     if uploaded:
-        st.session_state.file_content = uploaded.read().decode("utf-8", "ignore")
-        st.success("已上传")
+        st.session_state.file_content = uploaded.read().decode("utf-8", errors="ignore")
+        st.success("✅ 已加载")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ===================== 主界面 =====================
@@ -192,33 +191,44 @@ col1, col2, col3 = st.columns([3,1,1])
 with col1:
     model_sel = st.selectbox("模型", MODEL_LIST)
 with col2:
-    if st.button("清空对话"):
+    if st.button("🧹 清空对话"):
         st.session_state.messages = []
+        st.session_state.json_logs = {}
         st.rerun()
 with col3:
     if st.session_state.messages:
         txt = "\n\n".join([f"{'用户' if m['role']=='user' else '助手'}：{m['content']}" for m in st.session_state.messages])
-        st.download_button(
-            "导出对话",
-            txt,
-            f"对话_{datetime.now().strftime('%Y%m%d%H%M')}.txt"
-        )
+        st.download_button("💾 导出对话", txt, f"对话_{datetime.now().strftime('%Y%m%d%H%M')}.txt")
 
 custom_model = st.text_input("自定义模型") if model_sel == "自定义模型" else ""
 
 # 聊天区域
 st.markdown('<div class="mdui-card" id="chat-box">', unsafe_allow_html=True)
-for msg in st.session_state.messages:
+for i, msg in enumerate(st.session_state.messages):
     if msg["role"] == "user":
         st.markdown(f'<div class="user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="bot-msg">{msg["content"]}</div>', unsafe_allow_html=True)
+        if str(i) in st.session_state.json_logs:
+            with st.expander("📄 查看完整JSON", expanded=False):
+                st.code(st.session_state.json_logs[str(i)], language="json")
 st.markdown('</div>', unsafe_allow_html=True)
 
 # 输入框
-prompt = st.text_input("输入问题", label_visibility="collapsed", placeholder="输入消息...")
+prompt = st.text_input("输入问题", label_visibility="collapsed", placeholder="输入消息...", key="user_prompt")
 
-if st.button("发送", use_container_width=True) and prompt:
+# 回车发送
+st.markdown("""
+<script>
+const ipt = document.querySelector('input[aria-label="输入问题"]');
+ipt?.addEventListener('keydown', e => {
+    if(e.key === 'Enter') document.querySelector('button[kind="primary"]')?.click();
+});
+</script>
+""", unsafe_allow_html=True)
+
+# 发送逻辑
+if st.button("🚀 发送", use_container_width=True) and prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     used_model = custom_model if model_sel == "自定义模型" else model_sel
     account, token = get_final_credits()
@@ -226,16 +236,23 @@ if st.button("发送", use_container_width=True) and prompt:
     with st.spinner("处理中..."):
         kb_content = load_kb(kb1, kb2)
         file_content = st.session_state.file_content
-        context = f"知识库：{kb_content}\n文件：{file_content}"
+        context = f"【知识库】\n{kb_content}\n\n【上传文件】\n{file_content}"
 
-        check = cf_ai(f"只用中文。能回答输出有答案，否则无答案。\n{context}\n问题：{prompt}", account, token, used_model)
-        if "无答案" in check:
+        check_ans, _ = cf_ai(f"只用中文。能回答输出有答案，否则无答案。\n{context}\n问题：{prompt}", account, token, used_model)
+        
+        if "无答案" in check_ans:
             web = search(prompt)
-            ans = cf_ai(f"只用中文如实回答。\n{context}\n搜索：{web}\n问题：{prompt}", account, token, used_model) + "\n(来源：联网)"
+            final_prompt = f"只用中文如实回答。\n{context}\n搜索：{web}\n问题：{prompt}"
+            ans, raw_json = cf_ai(final_prompt, account, token, used_model)
+            ans += "\n(来源：联网搜索)"
         else:
-            ans = cf_ai(f"只用中文回答。\n{context}\n问题：{prompt}", account, token, used_model) + "\n(来源：知识库)"
+            final_prompt = f"只用中文回答。\n{context}\n问题：{prompt}"
+            ans, raw_json = cf_ai(final_prompt, account, token, used_model)
+            ans += "\n(来源：知识库)"
 
+    idx = len(st.session_state.messages)
     st.session_state.messages.append({"role": "assistant", "content": ans})
+    st.session_state.json_logs[str(idx)] = json.dumps(raw_json, ensure_ascii=False, indent=2)
     st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
