@@ -44,7 +44,7 @@ MODEL_LIST = [
     "自定义模型"
 ]
 
-# ===================== 账号优先级（你原版 100% 不动）=====================
+# ===================== 【你的原版：AI 优先级 100% 不动】=====================
 def get_final_credits():
     var_id = st.secrets.get("CF_ACCOUNT_ID", "")
     var_token = st.secrets.get("CF_API_TOKEN", "")
@@ -54,15 +54,16 @@ def get_final_credits():
     final_token = user_token.strip() if user_token.strip() else var_token.strip()
     return final_id, final_token
 
-# ===================== 【仅新增：CF 浏览器独立获取】=====================
+# ===================== 【新增：浏览器 完全独立 优先级】=====================
 def get_browser_credits():
-    # 浏览器也走同样逻辑：用户输入优先 → 否则 secrets
-    browser_id = st.secrets.get("CF_BROWSER_ACCOUNT_ID", "")
-    browser_token = st.secrets.get("CF_BROWSER_API_TOKEN", "")
-    return browser_id, browser_token
+    # 浏览器 独立配置，和 AI 一毛钱关系没有
+    b_id = st.secrets.get("CF_BROWSER_ACCOUNT_ID", "")
+    b_token = st.secrets.get("CF_BROWSER_API_TOKEN", "")
+    return b_id, b_token
 
-# ===================== 【仅新增：Cloudflare 官方无头浏览器】=====================
-def cf_browser_fetch(url, account_id, api_token):
+# ===================== 【新增：独立浏览器调用，绝不碰 AI 逻辑】=====================
+def cf_browser(url):
+    account_id, api_token = get_browser_credits()
     if not account_id or not api_token:
         return ""
     try:
@@ -133,7 +134,7 @@ def extract_answer(res):
     except:
         return str(res).strip()
 
-# ===================== AI 调用 =====================
+# ===================== AI 调用（原版不动）=====================
 def cf_ai(prompt, account_id, api_token, model):
     if not account_id or not api_token:
         return "🔒 请填写 CF Account ID 和 API Token", {}
@@ -163,7 +164,7 @@ def cf_ai(prompt, account_id, api_token, model):
     except Exception as e:
         return f"❌ 调用失败：{str(e)}", {}
 
-# ===================== 【核心修复】MDUI 布局 + 消除空白 =====================
+# ===================== 【你的原版样式 100% 不动】=====================
 st.markdown("""
 <link rel="stylesheet" href="https://cdn.mdui.org/css/mdui.min.css">
 <script src="https://cdn.mdui.org/js/mdui.min.js"></script>
@@ -229,7 +230,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ===================== 侧边栏 =====================
+# ===================== 侧边栏（原版不动）=====================
 with st.sidebar:
     st.title("Kzz AI 2")
     st.markdown('<div class="mdui-card" style="background:#1e1e1e;border:1px solid #333;">', unsafe_allow_html=True)
@@ -248,7 +249,7 @@ with st.sidebar:
         st.success("✅ 已加载")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ===================== 主界面 =====================
+# ===================== 主界面（原版不动）=====================
 st.markdown('<div class="main">', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns([3,1,1], gap="small")
@@ -286,12 +287,11 @@ ipt?.addEventListener('keydown', e => { if(e.key === 'Enter') document.querySele
 </script>
 """, unsafe_allow_html=True)
 
-# ===================== 发送逻辑（你原版 100% 不动 + 仅加浏览器）=====================
+# ===================== 发送逻辑（原版 100% 不动 + 仅替换搜索为浏览器）=====================
 if st.button("🚀 发送", use_container_width=True) and prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     used_model = custom_model if model_sel == "自定义模型" else model_sel
     account, token = get_final_credits()
-    browser_account, browser_token = get_browser_credits()
 
     with st.spinner("处理中..."):
         kb_content = load_kb(kb1, kb2)
@@ -308,17 +308,15 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
         check_ans, _ = cf_ai(check_prompt, account, token, used_model)
         
         if "无答案" in check_ans:
-            # 👇 这里：优先用 CF 官方无头浏览器，没有就降级普通搜索
-            web = cf_browser_fetch(f"https://www.bing.com/search?q={urllib.parse.quote(prompt)}", browser_account, browser_token)
-            if not web:
-                web = search(prompt)
-            
+            # 👇 这里：独立浏览器调用，和AI账号无关
+            search_url = f"https://www.bing.com/search?q={urllib.parse.quote(prompt)}"
+            web = cf_browser(search_url) or search(prompt)
             final_prompt = f"""你是中文助手，只根据搜索结果如实回答，不要加任何前缀、问号。
 知识库：{context}
 搜索结果：{web}
 问题：{prompt}"""
             ans, raw_json = cf_ai(final_prompt, account, token, used_model)
-            ans += "\n(来源：Cloudflare 浏览器)"
+            ans += "\n(来源：CF浏览器)"
         else:
             final_prompt = f"""你是中文助手，只根据知识库完整回答，不要加任何前缀、问号。
 知识库：{context}
