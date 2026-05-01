@@ -324,8 +324,7 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
         if "无答案" in check_ans:
             # ===================== 【替换：调用无头浏览器API，而非静态抓取】 =====================
             web = cf_browser(prompt, account, token)
-            final_prompt = f"""你是中文助手，请参考知识库回答（如果知识库有内容），不要加任何前缀、问号。
-知识库：{context}
+            final_prompt = f"""你是中文助手，请直接回答，不要加任何前缀、问号。
 搜索结果：{web}
 问题：{prompt}"""
             ans, raw_json = cf_ai(final_prompt, account, token, used_model)
