@@ -85,7 +85,7 @@ def fetch(url):
 def load_kb(url1, url2):
     return "\n".join([fetch(url1), fetch(url2)])
 
-# ===================== 无头浏览器API（保留但不再强制使用） =====================
+# ===================== 无头浏览器API =====================
 @st.cache_data(ttl=60)
 def cf_browser(query, account_id, api_token):
     if not account_id or not api_token:
@@ -131,8 +131,8 @@ def extract_answer(res):
     except:
         return str(res).strip()
 
-# ===================== CF AI 调用 =====================
-def cf_ai(prompt, account_id, api_token, model):
+# ===================== 原CF AI调用 修复接口 不动逻辑 =====================
+def cf_ai(account_id, api_token, model, prompt):
     if not account_id or not api_token:
         return "🔒 请填写 CF Account ID 和 API Token", {}
 
@@ -141,7 +141,8 @@ def cf_ai(prompt, account_id, api_token, model):
         model = f"@cf/{model}"
 
     try:
-        url = f"https://api.cloudflare.com/client/v4/ai/run/{model}"
+        # 修复：用正确官方接口地址
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
         headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
@@ -287,7 +288,7 @@ ipt?.addEventListener('keydown', e => { if(e.key === 'Enter') document.querySele
 </script>
 """, unsafe_allow_html=True)
 
-# ===================== 全新纯净通用AI发送逻辑 =====================
+# ===================== 纯净通用发送逻辑 无二次校验 不强制知识库 =====================
 if st.button("🚀 发送", use_container_width=True) and prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     used_model = custom_model if model_sel == "自定义模型" else model_sel
@@ -302,16 +303,14 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
             context_prompt = f"""参考资料：
 【知识库】
 {kb_content}
-
 【上传文件】
 {file_content}
-有参考资料就酌情参考，无参考资料直接正常自由回答，不要刻意套模板、不要机械复述无相关内容。
+有资料就酌情参考，无资料直接自由正常回答，不要机械说无相关内容。
 """
         
-        final_prompt = f"""{context_prompt}
-用户问题：{prompt}
-"""
-        ans, raw_json = cf_ai(final_prompt, account, token, used_model)
+        final_prompt = f"{context_prompt}\n用户问题：{prompt}"
+        # 传参顺序修正，不400
+        ans, raw_json = cf_ai(account, token, used_model, final_prompt)
 
     idx = len(st.session_state.messages)
     st.session_state.messages.append({"role": "assistant", "content": ans})
