@@ -85,29 +85,22 @@ def fetch(url):
 def load_kb(url1, url2):
     return "\n".join([fetch(url1), fetch(url2)])
 
-# ===================== 【新增：独立Cloudflare无头浏览器API】与AI API完全分离，不共用逻辑 =====================
+# ===================== 无头浏览器API（保留但不再强制使用） =====================
 @st.cache_data(ttl=60)
 def cf_browser(query, account_id, api_token):
-    """
-    独立的Cloudflare无头浏览器渲染API
-    与原cf_ai函数完全隔离，仅复用账号信息，逻辑/端点/参数均不共用
-    """
     if not account_id or not api_token:
         return "🔒 请填写 CF Account ID 和 API Token"
     
     search_url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
     try:
-        # Cloudflare 官方浏览器渲染API端点（独立于AI运行API）
         api_endpoint = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/workers/browser-rendering"
         headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
-        
-        # 浏览器渲染请求参数（独立配置，与AI无关）
         payload = json.dumps({
             "url": search_url,
-            "waitUntil": "networkIdle",  # 等待动态页面加载完成
+            "waitUntil": "networkIdle",
             "timeout": 15000
         }).encode()
 
@@ -115,7 +108,6 @@ def cf_browser(query, account_id, api_token):
         with urllib.request.urlopen(req, timeout=25) as f:
             res = json.load(f)
 
-        # 提取浏览器渲染后的纯文本内容
         if res.get("success") and "result" in res:
             return clean_html(res["result"].get("content", ""))
         else:
@@ -124,7 +116,7 @@ def cf_browser(query, account_id, api_token):
     except Exception as e:
         return f"❌ 无头浏览器渲染失败：{str(e)}"
 
-# ===================== 提取回答 + 过滤问号 =====================
+# ===================== 提取回答 =====================
 def extract_answer(res):
     try:
         result = res.get("result", res)
@@ -134,13 +126,12 @@ def extract_answer(res):
             text = str(result["response"]).strip()
         else:
             text = str(result).strip()
-        # 过滤开头问号、换行
         text = re.sub(r"^[？?\n\s]+", "", text)
         return text
     except:
         return str(res).strip()
 
-# ===================== 原AI调用（完全不动） =====================
+# ===================== CF AI 调用 =====================
 def cf_ai(prompt, account_id, api_token, model):
     if not account_id or not api_token:
         return "🔒 请填写 CF Account ID 和 API Token", {}
@@ -150,7 +141,7 @@ def cf_ai(prompt, account_id, api_token, model):
         model = f"@cf/{model}"
 
     try:
-        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+        url = f"https://api.cloudflare.com/client/v4/ai/run/{model}"
         headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
@@ -170,7 +161,7 @@ def cf_ai(prompt, account_id, api_token, model):
     except Exception as e:
         return f"❌ 调用失败：{str(e)}", {}
 
-# ===================== 【核心修复】MDUI 布局 + 消除空白（完全不动） =====================
+# ===================== 页面样式布局 =====================
 st.markdown("""
 <link rel="stylesheet" href="https://cdn.mdui.org/css/mdui.min.css">
 <script src="https://cdn.mdui.org/js/mdui.min.js"></script>
@@ -182,26 +173,23 @@ st.markdown("""
 </div>
 
 <style>
-/* 重置 Streamlit 深色模式冲突，消除空白 */
 .stApp { background: #121212 !important; }
 .main { 
     max-width: 900px; 
-    margin: 20px auto 0 auto;  /* 顶部只留20px，消除大空白 */
+    margin: 20px auto 0 auto;
     padding: 0 20px;
 }
-/* 模型选择栏紧凑布局 */
 .model-bar { 
     display: flex; 
     gap: 16px; 
     align-items: center; 
     margin-bottom: 16px;
 }
-/* 聊天框高度自适应，不挤压上方 */
 .chat-box {
     background: #1e1e1e;
     border-radius: 16px;
     padding: 20px;
-    max-height: 60vh;  /* 用视口高度，不固定死550px */
+    max-height: 60vh;
     overflow-y: auto;
     margin-bottom: 16px;
     border: 1px solid #333;
@@ -224,7 +212,6 @@ st.markdown("""
     max-width: 75%;
     white-space: pre-wrap;
 }
-/* 输入框样式 */
 .stTextInput > div > input {
     border-radius: 12px;
     background: #1e1e1e;
@@ -240,7 +227,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ===================== 侧边栏（完全不动） =====================
+# ===================== 侧边栏 =====================
 with st.sidebar:
     st.title("Kzz AI 2")
     st.markdown('<div class="mdui-card" style="background:#1e1e1e;border:1px solid #333;">', unsafe_allow_html=True)
@@ -259,10 +246,9 @@ with st.sidebar:
         st.success("✅ 已加载")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ===================== 主界面（完全不动） =====================
+# ===================== 主界面 =====================
 st.markdown('<div class="main">', unsafe_allow_html=True)
 
-# 模型选择 + 按钮
 col1, col2, col3 = st.columns([3,1,1], gap="small")
 with col1:
     model_sel = st.selectbox("模型", MODEL_LIST, label_visibility="collapsed")
@@ -301,7 +287,7 @@ ipt?.addEventListener('keydown', e => { if(e.key === 'Enter') document.querySele
 </script>
 """, unsafe_allow_html=True)
 
-# 发送逻辑（仅替换静态搜索为无头浏览器API，其余完全不动）
+# ===================== 全新纯净通用AI发送逻辑 =====================
 if st.button("🚀 发送", use_container_width=True) and prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     used_model = custom_model if model_sel == "自定义模型" else model_sel
@@ -310,31 +296,22 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
     with st.spinner("处理中..."):
         kb_content = load_kb(kb1, kb2)
         file_content = st.session_state.file_content
-        context = f"【知识库】\n{kb_content}\n\n【上传文件】\n{file_content}"
-
-        check_prompt = f"""你是中文助手，请参考知识库回答（如果知识库有内容）。
-能回答就输出：有答案
-不能回答就输出：无答案
-不要输出任何其他内容，不要加问号。
-
-知识库：{context}
-问题：{prompt}"""
-        check_ans, _ = cf_ai(check_prompt, account, token, used_model)
         
-        if "无答案" in check_ans:
-            # ===================== 【替换：调用无头浏览器API，而非静态抓取】 =====================
-            web = cf_browser(prompt, account, token)
-            final_prompt = f"""你是中文助手，请直接回答，不要加任何前缀、问号。
-搜索结果：{web}
-问题：{prompt}"""
-            ans, raw_json = cf_ai(final_prompt, account, token, used_model)
-            ans += "\n(来源：Cloudflare无头浏览器搜索)"
-        else:
-            final_prompt = f"""你是中文助手，请参考知识库回答（如果知识库有内容），不要加任何前缀、问号。
-知识库：{context}
-问题：{prompt}"""
-            ans, raw_json = cf_ai(final_prompt, account, token, used_model)
-            ans += "\n(来源：知识库)"
+        context_prompt = ""
+        if kb_content.strip() or file_content.strip():
+            context_prompt = f"""参考资料：
+【知识库】
+{kb_content}
+
+【上传文件】
+{file_content}
+有参考资料就酌情参考，无参考资料直接正常自由回答，不要刻意套模板、不要机械复述无相关内容。
+"""
+        
+        final_prompt = f"""{context_prompt}
+用户问题：{prompt}
+"""
+        ans, raw_json = cf_ai(final_prompt, account, token, used_model)
 
     idx = len(st.session_state.messages)
     st.session_state.messages.append({"role": "assistant", "content": ans})
