@@ -312,7 +312,7 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
         file_content = st.session_state.file_content
         context = f"【知识库】\n{kb_content}\n\n【上传文件】\n{file_content}"
 
-        check_prompt = f"""你是中文助手，只根据知识库回答。
+        check_prompt = f"""你是中文助手，请参考知识库回答（如果知识库有内容）。
 能回答就输出：有答案
 不能回答就输出：无答案
 不要输出任何其他内容，不要加问号。
@@ -324,14 +324,14 @@ if st.button("🚀 发送", use_container_width=True) and prompt:
         if "无答案" in check_ans:
             # ===================== 【替换：调用无头浏览器API，而非静态抓取】 =====================
             web = cf_browser(prompt, account, token)
-            final_prompt = f"""你是中文助手，只根据搜索结果如实回答，不要加任何前缀、问号。
+            final_prompt = f"""你是中文助手，请参考知识库回答（如果知识库有内容），不要加任何前缀、问号。
 知识库：{context}
 搜索结果：{web}
 问题：{prompt}"""
             ans, raw_json = cf_ai(final_prompt, account, token, used_model)
             ans += "\n(来源：Cloudflare无头浏览器搜索)"
         else:
-            final_prompt = f"""你是中文助手，只根据知识库完整回答，不要加任何前缀、问号。
+            final_prompt = f"""你是中文助手，请参考知识库回答（如果知识库有内容），不要加任何前缀、问号。
 知识库：{context}
 问题：{prompt}"""
             ans, raw_json = cf_ai(final_prompt, account, token, used_model)
